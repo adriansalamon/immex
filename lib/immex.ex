@@ -5,7 +5,7 @@ defmodule Immex do
 
   use Supervisor
   alias Immex.Media
-  alias Immex.{Config, Registry}
+  alias Immex.{Config, Registry, Repo}
 
   @doc """
   Creates a facade for `Immex` that can be included in an OTP application.
@@ -132,7 +132,7 @@ defmodule Immex do
              content_type: content_type,
              url: "http://example.com"
            }),
-         {:ok, media} <- conf.repo.insert(changeset, prefix: conf.prefix) do
+         {:ok, media} <- Repo.insert(conf, changeset, prefix: conf.prefix) do
       {:ok, media}
     else
       {:error, changeset} -> {:error, changeset}
