@@ -1,8 +1,8 @@
 defmodule ImmexTest do
-  use ExUnit.Case, async: true
+  use Immex.Case, async: true
   doctest Immex
 
-  @opts [repo: :test, backend: :test]
+  @opts [repo: Repo, prefix: "private"]
 
   describe "child_spec/1" do
     test "name is used as a default child id" do
@@ -27,12 +27,16 @@ defmodule ImmexTest do
   end
 
   test "config/0 of a facade instance" do
-    defmodule MyImmex do
-      use Immex, otp_app: :immex, repo: MyImmex.Repo
-    end
+    start_supervised!({MyApp.Immex, []})
 
-    start_supervised!({MyImmex, []})
+    assert %{name: MyApp.Immex, repo: Immex.Test.Repo} = MyApp.Immex.config()
+  end
 
-    assert %{name: MyImmex, repo: MyImmex.Repo} = MyImmex.config()
+  test "upload works" do
+    start_supervised!({Immex, @opts})
+
+    {:ok, %Immex.Media{} = m} = Immex.upload("test", "test", "test")
+
+    assert m == Repo.get(Immex.Media, m.id, prefix: "private")
   end
 end

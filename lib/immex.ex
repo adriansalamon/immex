@@ -1,9 +1,10 @@
 defmodule Immex do
   @moduledoc """
-  Documentation for `Immex`.
+  Documentation for `Immex`, a media management library.
   """
 
   use Supervisor
+  alias Immex.Media
   alias Immex.{Config, Registry}
 
   @doc """
@@ -47,21 +48,44 @@ defmodule Immex do
         |> Keyword.merge(opts)
         |> Keyword.put(:name, __MODULE__)
         |> Immex.child_spec()
-        |> dbg()
       end
 
       def config do
         Immex.config(__MODULE__)
       end
+
+      def upload(file, file_name, content_type) do
+        Immex.upload(__MODULE__, file, file_name, content_type)
+      end
     end
   end
 
+  @doc """
+  Starts an `Immex` supervision tree with the given options.
+
+  ## Options
+
+  These options are required:
+
+  * `:repo` - The Ecto repo module to use for database operations.
+
+  These options are optional:
+
+  * `:name` - The name of the registry process. Defaults to `Immex`.
+  * `:prefix` - The prefix or namespace to use for database tables.
+    Defaults to `public`.
+  * `:owner_schema` - The schema module that owns media files. Defaults to
+    `Immex.DummyUser`.
+  """
+
+  @spec start_link(Keyword.t()) :: Supervisor.on_start()
   def start_link(opts) do
     conf = Config.new(opts)
 
     Supervisor.start_link(__MODULE__, conf, name: Registry.via(conf.name, conf))
   end
 
+  @doc false
   def child_spec(opts) do
     opts
     |> super()
@@ -75,5 +99,43 @@ defmodule Immex do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
+  @doc """
+  Returns the config for a given `Immex` process.
+
+  ## Examples
+
+  Get the default instance config:
+
+      %Immex.Config{} = Immex.config()
+
+  Get config for a named instance:
+
+      %Immex.Config{} = Immex.config(MyApp.Immex)
+
+  """
   def config(name \\ __MODULE__), do: Registry.config(name)
+
+  def upload(file, file_name, content_type) do
+    upload(__MODULE__, file, file_name, content_type)
+  end
+
+  # Proof of concept: Maybe something like this?
+  def upload(name, _file, file_name, content_type) do
+    conf =
+      config(name)
+
+    with {:ok, _file} <- {:ok, "test"},
+         changeset <-
+           Media.changeset(%Media{}, %{
+             name: file_name,
+             size: 0,
+             content_type: content_type,
+             url: "http://example.com"
+           }),
+         {:ok, media} <- conf.repo.insert(changeset, prefix: conf.prefix) do
+      {:ok, media}
+    else
+      {:error, changeset} -> {:error, changeset}
+    end
+  end
 end
