@@ -57,6 +57,10 @@ defmodule Immex do
       def upload(file, file_name, content_type) do
         Immex.upload(__MODULE__, file, file_name, content_type)
       end
+
+      def put(attrs, consume_fn) do
+        Immex.put(__MODULE__, attrs, consume_fn)
+      end
     end
   end
 
@@ -76,6 +80,10 @@ defmodule Immex do
     Defaults to `public`.
   * `:owner_schema` - The schema module that owns media files. Defaults to
     `Immex.DummyUser`.
+
+  If you are using the local file system for storage, you will need to specify
+
+  * `:base_path` - The base path where media files will be stored.
   """
 
   @spec start_link(Keyword.t()) :: Supervisor.on_start()
@@ -137,5 +145,36 @@ defmodule Immex do
     else
       {:error, changeset} -> {:error, changeset}
     end
+  end
+
+  def put(attrs, consume_fn) do
+    put(__MODULE__, attrs, consume_fn)
+  end
+
+  def put(name, attrs, consume_fn) when is_function(consume_fn, 1) do
+    conf = config(name)
+
+    changeset =
+      %Media{}
+      |> Media.changeset(attrs)
+
+    case Repo.insert(conf, changeset) do
+      {:ok, media} ->
+        consume_fn.(fn %{url: tmp_path} ->
+          path = media_path(name, media)
+          File.mkdir_p!(Path.dirname(path))
+          File.copy!(tmp_path, path)
+          {:ok, media}
+        end)
+
+        {:ok, media}
+
+      {:error, changeset} ->
+        {:error, changeset}
+    end
+  end
+
+  defp media_path(name, media) do
+    Path.join([config(name).base_path, "media", media.url])
   end
 end

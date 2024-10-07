@@ -61,7 +61,40 @@ defmodule Immex.Media do
   @doc false
   def changeset(media, attrs) do
     media
-    |> cast(attrs, [:name, :size, :content_type, :url])
-    |> validate_required([:name, :size, :content_type, :url])
+    |> cast(attrs, [:name, :size, :content_type, :owner_id])
+    |> validate_required([:name, :content_type])
+    |> validate_content_type()
+    |> put_url()
+  end
+
+  defp validate_content_type(changeset) do
+    content_type = get_field(changeset, :content_type)
+
+    case file_extension(content_type) do
+      :not_supported ->
+        add_error(changeset, :content_type, "unsupported content type")
+
+      _ ->
+        changeset
+    end
+  end
+
+  defp put_url(changeset) do
+    case get_field(changeset, :content_type) do
+      type when is_binary(type) ->
+        put_change(changeset, :url, Ecto.UUID.generate() <> file_extension(type))
+
+      nil ->
+        changeset
+    end
+  end
+
+  defp file_extension(content_type) do
+    case content_type do
+      "image/jpeg" -> ".jpg"
+      "image/png" -> ".png"
+      "image/gif" -> ".gif"
+      _ -> :not_supported
+    end
   end
 end

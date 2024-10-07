@@ -33,7 +33,8 @@ defmodule Immex.MixProject do
     [
       {:ecto_sql, "~> 3.12"},
       {:postgrex, "~> 0.19", optional: true},
-      {:ex_doc, "~> 0.34", only: [:test, :dev], runtime: false}
+      {:ex_doc, "~> 0.34", only: [:test, :dev], runtime: false},
+      {:phoenix_live_view, "~> 1.0.0-rc.6", optional: true}
     ]
   end
 

@@ -58,13 +58,15 @@ defmodule Immex.Migrations.Postgres do
   end
 
   def down(opts) do
-    prefix = Keyword.get(opts, :prefix, @default_prefix)
+    prefix = Keyword.get(opts, :prefix)
 
     drop table(:media_tags, prefix: prefix)
     drop table(:metadata, prefix: prefix)
     drop table(:tags, prefix: prefix)
     drop table(:media, prefix: prefix)
 
-    execute "DROP SCHEMA IF EXISTS #{prefix} CASCADE"
+    if prefix do
+      execute "DROP SCHEMA IF EXISTS #{prefix} CASCADE"
+    end
   end
 end

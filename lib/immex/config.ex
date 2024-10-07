@@ -5,7 +5,19 @@ defmodule Immex.Config do
   modules.
   """
 
-  defstruct repo: nil, name: Immex, prefix: "public"
+  @type t :: %__MODULE__{
+          repo: String.t(),
+          name: String.t(),
+          prefix: String.t(),
+          writer: module(),
+          base_path: String.t()
+        }
+
+  defstruct repo: nil,
+            name: Immex,
+            prefix: "public",
+            writer: Immex.Writers.Filesystem,
+            base_path: "priv/uploads"
 
   def new(opts) when is_list(opts) do
     struct!(__MODULE__, opts)
