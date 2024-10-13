@@ -20,6 +20,7 @@ defmodule DemoWeb.Router do
     get "/", PageController, :home
 
     live "/upload", UploadLive
+    live "/media", MediaLive
   end
 
   # Other scopes may use custom stacks.

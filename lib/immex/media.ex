@@ -28,6 +28,8 @@ defmodule Immex.Media do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias Immex.{Config, Metadata, Tag, Media}
+
   @owner_schema Application.compile_env(:immex, :owner_schema) ||
                   Immex.DummyUser
 
@@ -38,8 +40,8 @@ defmodule Immex.Media do
           content_type: String.t(),
           url: String.t(),
           owner: @owner_schema.t(),
-          metadata: [Immex.Metadata.t()],
-          tags: [Immex.Tag.t()],
+          metadata: [Metadata.t()],
+          tags: [Tag.t()],
           inserted_at: NaiveDateTime.t(),
           updated_at: NaiveDateTime.t()
         }
@@ -50,10 +52,12 @@ defmodule Immex.Media do
     field :content_type, :string
     field :url, :string
 
+    field :frontend_url, :string, virtual: true
+
     belongs_to :owner, @owner_schema
 
-    has_many :metadata, Immex.Metadata
-    many_to_many :tags, Immex.Tag, join_through: "media_tags"
+    has_many :metadata, Metadata
+    many_to_many :tags, Tag, join_through: "media_tags"
 
     timestamps()
   end
@@ -65,6 +69,17 @@ defmodule Immex.Media do
     |> validate_required([:name, :content_type])
     |> validate_content_type()
     |> put_url()
+  end
+
+  @doc false
+  def preload_frontend_url(%Media{} = media, config) do
+    base_path = Config.frontend_path(config)
+    Map.put(media, :frontend_url, "#{base_path}/#{media.url}")
+  end
+
+  def preload_frontend_url(media, config) when is_list(media) do
+    media
+    |> Enum.map(&preload_frontend_url(&1, config))
   end
 
   defp validate_content_type(changeset) do

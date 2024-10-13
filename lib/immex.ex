@@ -7,6 +7,8 @@ defmodule Immex do
   alias Immex.Media
   alias Immex.{Config, Registry, Repo}
 
+  import Ecto.Query
+
   @doc """
   Creates a facade for `Immex` that can be included in an OTP application.
 
@@ -54,12 +56,52 @@ defmodule Immex do
         Immex.config(__MODULE__)
       end
 
-      def upload(file, file_name, content_type) do
-        Immex.upload(__MODULE__, file, file_name, content_type)
-      end
-
       def put(attrs, consume_fn) do
         Immex.put(__MODULE__, attrs, consume_fn)
+      end
+
+      def list_media() do
+        Immex.list_media(__MODULE__)
+      end
+
+      def get_media(id) do
+        Immex.get_media(__MODULE__, id)
+      end
+
+      def update_media(id, attrs) do
+        Immex.update_media(__MODULE__, id, attrs)
+      end
+
+      def delete_media(id) do
+        Immex.delete_media(__MODULE__, id)
+      end
+
+      def get_metadata(media_id) do
+        Immex.get_metadata(__MODULE__, media_id)
+      end
+
+      def put_metadata(media_id, metadata_attrs) do
+        Immex.put_metadata(__MODULE__, media_id, metadata_attrs)
+      end
+
+      def create_tag(attrs) do
+        Immex.create_tag(__MODULE__, attrs)
+      end
+
+      def list_tags() do
+        Immex.list_tags(__MODULE__)
+      end
+
+      def delete_tag(id) do
+        Immex.delete_tag(__MODULE__, id)
+      end
+
+      def add_tag_to_media(media_id, tag_id) do
+        Immex.add_tag_to_media(__MODULE__, media_id, tag_id)
+      end
+
+      def get_media_by_tag(tag_id) do
+        Immex.get_media_by_tag(__MODULE__, tag_id)
       end
     end
   end
@@ -123,30 +165,22 @@ defmodule Immex do
   """
   def config(name \\ __MODULE__), do: Registry.config(name)
 
-  def upload(file, file_name, content_type) do
-    upload(__MODULE__, file, file_name, content_type)
-  end
+  ## PUBLIC API
 
-  # Proof of concept: Maybe something like this?
-  def upload(name, _file, file_name, content_type) do
-    conf =
-      config(name)
+  @doc """
+  Puts a media file into the media store.
 
-    with {:ok, _file} <- {:ok, "test"},
-         changeset <-
-           Media.changeset(%Media{}, %{
-             name: file_name,
-             size: 0,
-             content_type: content_type,
-             url: "http://example.com"
-           }),
-         {:ok, media} <- Repo.insert(conf, changeset, prefix: conf.prefix) do
-      {:ok, media}
-    else
-      {:error, changeset} -> {:error, changeset}
-    end
-  end
+  ## Examples
 
+  Put a media file into the default media store:
+
+      attrs = %{
+        name: "avatar",
+        content_type: "image/jpeg"
+      }
+
+      Immex.put(attrs, &consume_uploaded_entry(socket, entry, &1))
+  """
   def put(attrs, consume_fn) do
     put(__MODULE__, attrs, consume_fn)
   end
@@ -160,18 +194,230 @@ defmodule Immex do
 
     case Repo.insert(conf, changeset) do
       {:ok, media} ->
-        consume_fn.(fn %{url: tmp_path} ->
-          path = media_path(name, media)
-          File.mkdir_p!(Path.dirname(path))
-          File.copy!(tmp_path, path)
-          {:ok, media}
+        result = consume_fn.(fn %{url: tmp_path} ->
+          conf.writer.finalize(tmp_path, media_path(name, media))
         end)
 
-        {:ok, media}
+        case result do
+          {:postpone, _} ->
+            Repo.delete!(conf, media)
+            {:error, "failed to consume uploaded entry"}
+
+          _ -> {:ok, media}
+        end
+
+
 
       {:error, changeset} ->
         {:error, changeset}
     end
+  end
+
+  @doc """
+  Lists all media files in the media store.
+  """
+  def list_media() do
+    list_media(__MODULE__)
+  end
+
+  def list_media(name) do
+    conf = config(name)
+
+    Repo.all(conf, Media)
+    |> Media.preload_frontend_url(conf)
+  end
+
+  @doc """
+  Get a media file from the media store by ID.
+  """
+  def get_media(id) do
+    get_media(__MODULE__, id)
+  end
+
+  def get_media(name, id) do
+    conf = config(name)
+
+    Repo.get(conf, Media, id)
+    |> Media.preload_frontend_url(conf)
+  end
+
+  @doc """
+  Updates a media file in the media store.
+  """
+  def update_media(id, attrs) do
+    update_media(__MODULE__, id, attrs)
+  end
+
+  def update_media(name, id, attrs) do
+    conf = config(name)
+
+    case Repo.get(conf, Media, id) do
+      nil ->
+        {:error, "media not found"}
+
+      media ->
+        changeset = Media.changeset(media, attrs)
+
+        case Repo.update(conf, changeset) do
+          {:ok, media} ->
+            {:ok, media |> Media.preload_frontend_url(conf)}
+
+          {:error, changeset} ->
+            {:error, changeset}
+        end
+    end
+  end
+
+  @doc """
+  Delete a media file from the media store.
+  """
+  def delete_media(id) do
+    delete_media(__MODULE__, id)
+  end
+
+  def delete_media(name, id) do
+    conf = config(name)
+
+    case Repo.get(conf, Media, id) do
+      nil ->
+        {:error, "media not found"}
+
+      media ->
+        path = media_path(name, media)
+        File.rm(path)
+
+        Repo.delete(conf, media)
+    end
+  end
+
+  alias Immex.Metadata
+
+  @doc """
+  Fetches all metadata for a media item.
+  """
+  def get_metadata(media_id) do
+    get_metadata(__MODULE__, media_id)
+  end
+
+  def get_metadata(name, media_id) do
+    conf = config(name)
+    query = from m in Metadata, where: m.media_id == ^media_id
+
+    Repo.all(conf, query)
+  end
+
+  @doc """
+  Puts metadata to a media item.
+
+  ## Examples
+
+  Put metadata to a media item:
+
+      metadata_attrs = %{
+        "country" => "USA",
+        "city" => "San Francisco"
+      }
+
+      Immex.put_metadata(media_id, metadata_attrs)
+  """
+  def put_metadata(media_id, metadata_attrs) do
+    put_metadata(__MODULE__, media_id, metadata_attrs)
+  end
+
+  def put_metadata(_name, _media_id, metadata_attrs) when is_map(metadata_attrs) do
+    ## Unimplemented
+  end
+
+  alias Immex.Tag
+
+  @doc """
+  Create a new tag.
+  """
+  def create_tag(attrs) do
+    create_tag(__MODULE__, attrs)
+  end
+
+  def create_tag(name, attrs) do
+    conf = config(name)
+    changeset = Tag.changeset(%Tag{}, attrs)
+
+    Repo.insert(conf, changeset)
+  end
+
+  @doc """
+  Lists all tags.
+  """
+  def list_tags() do
+    list_tags(__MODULE__)
+  end
+
+  def list_tags(name) do
+    conf = config(name)
+
+    query =
+      from t in Tag,
+        preload: [:parent, :children]
+
+    Repo.all(conf, query)
+  end
+
+  @doc """
+  Delete a tag.
+  """
+  def delete_tag(id) do
+    delete_tag(__MODULE__, id)
+  end
+
+  def delete_tag(name, id) do
+    conf = config(name)
+
+    case Repo.get(conf, Tag, id) do
+      nil ->
+        {:error, "tag not found"}
+
+      tag ->
+        Repo.delete(conf, tag)
+    end
+  end
+
+  @doc """
+  Adds a tag to a media item.
+  """
+  def add_tag_to_media(media_id, tag_id) do
+    add_tag_to_media(__MODULE__, media_id, tag_id)
+  end
+
+  def add_tag_to_media(name, media_id, tag_id) do
+    conf = config(name)
+
+    case {Repo.get(conf, Media, media_id), Repo.get(conf, Tag, tag_id)} do
+      {nil, _} ->
+        {:error, "media not found"}
+
+      {_, nil} ->
+        {:error, "tag not found"}
+
+      {media, tag} ->
+        Repo.insert(conf, Ecto.build_assoc(media, :tags, [tag]))
+    end
+  end
+
+  @doc """
+  Get all media items associated with a tag.
+  """
+  def get_media_by_tag(tag_id) do
+    get_media_by_tag(__MODULE__, tag_id)
+  end
+
+  def get_media_by_tag(name, tag_id) do
+    conf = config(name)
+
+    query =
+      from m in Media,
+        join: t in assoc(m, :tags),
+        where: t.id == ^tag_id
+
+    Repo.all(conf, query)
   end
 
   defp media_path(name, media) do

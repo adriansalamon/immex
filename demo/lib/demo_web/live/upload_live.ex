@@ -22,6 +22,7 @@ defmodule DemoWeb.UploadLive do
       name: "avatar",
       content_type: "image/jpeg"
     }
+
     {[entry], _} = uploaded_entries(socket, :avatar)
 
     case Demo.Immex.put(attrs, &consume_uploaded_entry(socket, entry, &1)) do

@@ -17,9 +17,14 @@ defmodule Immex.Config do
             name: Immex,
             prefix: "public",
             writer: Immex.Writers.Filesystem,
-            base_path: "priv/uploads"
+            base_path: "priv/uploads",
+            frontend_path: "media"
 
   def new(opts) when is_list(opts) do
     struct!(__MODULE__, opts)
+  end
+
+  def frontend_path(config) do
+    config.frontend_path
   end
 end
